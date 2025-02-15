@@ -1,0 +1,32 @@
+{
+  "name": "tiktok-follower-scraper",
+  "version": "1.0.0",
+  "description": "A Node.js application to scrape TikTok follower lists",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "nodemon",
+    "build": "tsc"
+  },
+  "keywords": [
+    "tiktok",
+    "scraper",
+    "followers",
+    "puppeteer"
+  ],
+  "author": "You",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.3.2",
+    "puppeteer": "^21.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/puppeteer": "^5.4.7",
+    "nodemon": "^3.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  }
+}
