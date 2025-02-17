@@ -19,14 +19,12 @@
   "license": "ISC",
   "dependencies": {
     "dotenv": "^16.3.2",
-    "puppeteer": "^21.0.0",
+    "puppeteer": "^21.11.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/puppeteer": "^5.4.7",
-    "@types/puppeteer": "^21.1.0",
     "cross-env": "^7.0.3",
     "nodemon": "^3.0.0",
     "ts-node": "^10.9.2",
