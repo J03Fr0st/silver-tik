@@ -25,10 +25,72 @@ class TikTokScraper {
   async init(): Promise<void> {
     this.browser = await puppeteer.launch({
       headless: false,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-infobars",
+        "--window-size=1280,800",
+        "--start-maximized"
+      ],
+      defaultViewport: null,
+      ignoreDefaultArgs: ["--enable-automation"]
     });
+
     this.page = await this.browser.newPage();
-    await this.page.setViewport({ width: 1280, height: 800 });
+    
+    // Randomize viewport size slightly
+    const width = 1280 + Math.floor(Math.random() * 100);
+    const height = 800 + Math.floor(Math.random() * 100);
+    await this.page.setViewport({ width, height });
+    
+    // Set a more realistic user agent
+    const userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+    ];
+    await this.page.setUserAgent(userAgents[Math.floor(Math.random() * userAgents.length)]);
+    
+    // Set extra headers to appear more like a real browser
+    await this.page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br'
+    });
+
+    // Inject scripts to mask automation
+    await this.page.evaluateOnNewDocument(() => {
+      // Pass the Webdriver Test
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      
+      // Pass the Chrome Test
+      window.chrome = {
+        runtime: {}
+      };
+      
+      // Pass the Permissions Test
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters: any) => (
+        parameters.name === 'notifications' ?
+          Promise.resolve({ state: Notification.permission }) :
+          originalQuery(parameters)
+      );
+
+      // Pass the Plugins Length Test
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5]
+      });
+
+      // Pass the Languages Test
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en']
+      });
+    });
+
+    // Enable stealth mode
+    await this.page.setJavaScriptEnabled(true);
   }
 
   async login(username: string, password: string): Promise<boolean> {
@@ -36,29 +98,30 @@ class TikTokScraper {
 
     try {
       console.log("🔑 Logging in to TikTok...");
-      await this.page.goto("https://www.tiktok.com/login/phone-or-email/email");
+      // Open the email login page directly in the browser
+      await this.page.goto("https://www.tiktok.com/login/phone-or-email/email", {
+        waitUntil: 'networkidle0'
+      });
       
-      // Wait for login frame and switch to it
-      const loginFrame = await this.page.waitForSelector('iframe[src*="login_dialog"]');
-      if (!loginFrame) throw new Error("Login frame not found");
+      // Wait for and click the "Use phone / email / username" button
+      await this.page.waitForSelector('[data-e2e="type-select-input"]');
+      await this.page.click('[data-e2e="type-select-input"]');
       
-      const frame = await loginFrame.contentFrame();
-      if (!frame) throw new Error("Could not switch to login frame");
-
-      // Click login with email/username
-      await frame.waitForSelector('[data-e2e="login-email-button"]');
-      await frame.click('[data-e2e="login-email-button"]');
-
-      // Fill in credentials
-      await frame.waitForSelector('[data-e2e="email-username-input"]');
-      await frame.type('[data-e2e="email-username-input"]', username);
-      await frame.type('[data-e2e="password-input"]', password);
-
+      // Wait for login form
+      await this.page.waitForTimeout(2000);
+      
+      // Type username and password
+      await this.page.type('[data-e2e="email-username-input"]', username);
+      await this.page.type('[data-e2e="password-input"]', password);
+      
       // Click login button
-      await frame.click('[data-e2e="login-button"]');
+      await this.page.click('[data-e2e="login-button"]');
 
       // Wait for navigation to complete
-      await this.page.waitForNavigation({ waitUntil: 'networkidle0' });
+      await this.page.waitForNavigation({ 
+        waitUntil: 'networkidle0',
+        timeout: 60000
+      });
       
       // Handle CAPTCHA if present
       if (await this.page.$('.secsdk-captcha-drag-icon')) {
@@ -68,7 +131,18 @@ class TikTokScraper {
       // Handle any popups
       await this.handlePopups();
 
-      return true;
+      // Verify login success
+      const loggedIn = await this.page.evaluate(() => {
+        return !document.querySelector('[data-e2e="login-button"]');
+      });
+
+      if (loggedIn) {
+        console.log("✅ Successfully logged in!");
+        return true;
+      } else {
+        console.log("❌ Login failed - still on login page");
+        return false;
+      }
     } catch (error) {
       console.error("Login failed:", error);
       return false;
@@ -155,23 +229,19 @@ class TikTokScraper {
     try {
       console.log("Navigating to following list...");
       
-      // Try clicking following count first
-      try {
-        const followingCountSelector = '[data-e2e="following-count"]';
-        await this.page.waitForSelector(followingCountSelector, { timeout: 10000 });
-        await this.page.click(followingCountSelector);
-      } catch (error) {
-        console.log("Couldn't click following count, trying direct navigation...");
-        await this.page.goto(`https://www.tiktok.com/@${username}/following`);
-      }
+      // Navigate directly to following page
+      await this.page.goto(`https://www.tiktok.com/@${username}/following`);
+      await this.page.waitForTimeout(3000);
 
       // Wait for following list to load
       console.log("Waiting for following list to load...");
+      let userCardSelector = '[data-e2e="user-card"]';
       try {
-        await this.page.waitForSelector('[data-e2e="user-card"]', { timeout: 15000 });
+        await this.page.waitForSelector(userCardSelector, { timeout: 15000 });
       } catch (error) {
         console.log("Trying alternative selector...");
-        await this.page.waitForSelector('.user-card', { timeout: 5000 });
+        userCardSelector = '.user-card';
+        await this.page.waitForSelector(userCardSelector, { timeout: 5000 });
       }
 
       const following: Follower[] = [];
@@ -181,26 +251,8 @@ class TikTokScraper {
 
       // Scroll to load all following
       while (attempts < 20 && noNewFollowingCount < 3) {
-        const currentHeight = await this.page.evaluate(() => document.body.scrollHeight);
-        
-        if (currentHeight === previousHeight) {
-          noNewFollowingCount++;
-          await this.page.waitForTimeout(2000);
-          continue;
-        }
-
-        noNewFollowingCount = 0;
-        previousHeight = currentHeight;
-        
-        await this.page.evaluate(() => {
-          window.scrollTo(0, document.body.scrollHeight);
-        });
-        
-        await this.page.waitForTimeout(2000);
-
-        // Extract following data
-        const newFollowing = await this.page.evaluate(() => {
-          const items = Array.from(document.querySelectorAll('[data-e2e="user-card"], .user-card'));
+        const newFollowing = await this.page.evaluate((selector) => {
+          const items = Array.from(document.querySelectorAll(selector));
           return items.map(item => {
             const link = item.querySelector('a');
             const href = link?.href || '';
@@ -210,22 +262,34 @@ class TikTokScraper {
               profileUrl: href
             };
           });
-        });
+        }, userCardSelector);
 
-        // Update following list and remove duplicates
-        const uniqueFollowing = Array.from(
-          new Map([...following, ...newFollowing].map((f) => [f.username, f])).values()
-        );
-        following.splice(0, following.length, ...uniqueFollowing);
-        
-        console.log(`Found ${following.length} following so far...`);
+        // Add new unique following
+        for (const user of newFollowing) {
+          if (!following.some(f => f.username === user.username)) {
+            following.push(user);
+          }
+        }
+
+        // Scroll down
+        await this.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await this.page.waitForTimeout(2000);
+
+        const currentHeight = await this.page.evaluate(() => document.body.scrollHeight);
+        if (currentHeight === previousHeight) {
+          noNewFollowingCount++;
+        } else {
+          noNewFollowingCount = 0;
+        }
+        previousHeight = currentHeight;
         attempts++;
+
+        console.log(`Found ${following.length} following so far...`);
       }
 
       return following;
     } catch (error) {
       console.error("Failed to scrape following:", error);
-      await this.page.screenshot({ path: 'debug-following-page.png' });
       return [];
     }
   }
@@ -276,6 +340,8 @@ async function main() {
   } catch (error) {
     console.error("Error during scraping:", error);
     throw error;
+  } finally {
+    await scraper.close();
   }
 }
 
