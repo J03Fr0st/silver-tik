@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "A Node.js application to scrape TikTok follower lists",
   "main": "dist/index.js",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
-    "start": "node --loader ts-node/esm src/index.ts",
-    "dev": "nodemon --watch src -e ts --exec \"node --loader ts-node/esm src/index.ts\"",
+    "start": "ts-node src/index.ts",
+    "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc"
   },
   "keywords": [
