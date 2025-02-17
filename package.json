@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "A Node.js application to scrape TikTok follower lists",
   "main": "dist/index.js",
+  "type": "module",
   "scripts": {
-    "start": "node dist/index.js",
-    "dev": "nodemon",
+    "start": "node --no-warnings --loader ts-node/esm --experimental-specifier-resolution=node src/index.ts",
+    "dev": "nodemon --exec 'node --no-warnings --loader ts-node/esm --experimental-specifier-resolution=node' src/index.ts",
     "build": "tsc"
   },
   "keywords": [
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/puppeteer": "^5.4.7",
+    "cross-env": "^7.0.3",
     "nodemon": "^3.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0"
