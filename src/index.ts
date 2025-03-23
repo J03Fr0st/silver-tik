@@ -1,6 +1,6 @@
-import puppeteer, { Page } from 'puppeteer';
+import puppeteer, { Page, Browser } from 'puppeteer';
 import { config } from 'dotenv';
-import fs from 'fs/promises';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -26,8 +26,33 @@ async function saveToFile(followers: Follower[]): Promise<void> {
     console.log(`Saved ${followers.length} followers to ${OUTPUT_FILE}`);
 }
 
+async function login(page: Page): Promise<void> {
+    console.log('Attempting to log in...');
+    
+    // Wait for the email input field and type the email
+    await page.waitForSelector('input[name="username"]');
+    await page.type('input[name="username"]', process.env.TIKTOK_EMAIL || '');
+    
+    // Wait for the password input field and type the password
+    await page.waitForSelector('input[type="password"]');
+    await page.type('input[type="password"]', process.env.TIKTOK_PASSWORD || '');
+    
+    // Click the login button
+    await page.waitForSelector('button[type="submit"]');
+    await page.click('button[type="submit"]');
+    
+    // Wait for navigation to complete after login
+    console.log('Waiting for login to complete...');
+    await page.waitForNavigation({
+        waitUntil: 'networkidle0',
+        timeout: 60000
+    });
+    
+    console.log('Login successful!');
+}
+
 async function scrapeFollowers(): Promise<void> {
-    const browser = await puppeteer.launch({
+    const browser: Browser = await puppeteer.launch({
         headless: false,
         defaultViewport: null
     });
@@ -36,25 +61,26 @@ async function scrapeFollowers(): Promise<void> {
         const page: Page = await browser.newPage();
         
         // Navigate to TikTok login page
+        console.log('Navigating to TikTok login page...');
         await page.goto(TIKTOK_URL);
         
-        console.log('Please log in to your TikTok account...');
-        // Wait for navigation to complete after login
-        await page.waitForNavigation({
-            waitUntil: 'networkidle0',
-            timeout: 60000
-        });
-
-        if (!process.env.TIKTOK_USERNAME) {
-            throw new Error('TIKTOK_USERNAME environment variable is not set');
+        // Check if we have the required environment variables
+        if (!process.env.TIKTOK_EMAIL || !process.env.TIKTOK_PASSWORD || !process.env.TIKTOK_USERNAME) {
+            throw new Error('Missing required environment variables. Please check your .env file');
         }
 
+        // Attempt to login
+        await login(page);
+
         // Navigate to the followers page
-        await page.goto(`https://www.tiktok.com/@${process.env.TIKTOK_USERNAME}/followers`);
+        const targetUsername = process.env.TARGET_USERNAME || process.env.TIKTOK_USERNAME;
+        console.log(`Navigating to @${targetUsername}'s followers page...`);
+        await page.goto(`https://www.tiktok.com/@${targetUsername}/followers`);
         
         const followers: Follower[] = [];
         
         // Wait for the followers list to load
+        console.log('Waiting for followers list to load...');
         await page.waitForSelector('.tiktok-follower-item', { timeout: 10000 });
         
         let previousHeight = 0;
@@ -73,6 +99,7 @@ async function scrapeFollowers(): Promise<void> {
                     // Only add if not already in the list
                     if (!followers.some(f => f.username === username)) {
                         followers.push({ username, nickname, profileUrl });
+                        console.log(`Found follower: ${username}`);
                     }
                 } catch (error) {
                     console.warn('Failed to extract follower data:', error);
@@ -86,6 +113,7 @@ async function scrapeFollowers(): Promise<void> {
             
             const newHeight = await page.evaluate(() => document.body.scrollHeight);
             if (newHeight === previousHeight) {
+                console.log('Reached end of followers list');
                 break; // No new content loaded
             }
             
